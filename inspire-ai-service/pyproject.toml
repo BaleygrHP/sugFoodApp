@@ -1,0 +1,93 @@
+[tool.poetry]
+name = "helpdesk-agentic"
+version = "0.1.0"
+description = " AI Module with LlamaIndex"
+authors = [" <ticketplus0@gmail.com>"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.scripts]
+generate = "app.core.engines.generate:generate_datasource"
+dev = "run:dev"
+prod = "run:prod"
+worker = "run_workers:main"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.15"
+fastapi = "^0.109.1"
+uvicorn = "^0.34.0"
+pydantic = "^2.11.3"
+pydantic-settings = "^2.8.1"
+python-dotenv = "^1.1.0"
+llama-index = "^0.12.38"
+llama-index-llms-gemini = "^0.4.14"
+llama-index-embeddings-gemini = "^0.3.2"
+llama-index-readers-file = "^0.4.7"
+llama-index-readers-web = "^0.3.9"
+google-generativeai = "^0.8.4"
+beautifulsoup4 = "^4.13.3"
+qdrant-client = "^1.13.3"
+rich = "^13.6.0"
+fastembed = "^0.5.1"
+python-multipart = "^0.0.20"
+celery = "^5.5.2"
+redis = "^5.2.1"
+flower = "^2.0.1"
+gevent = "^25.4.2"
+docx2txt = "^0.8"
+python-docx = "^1.1.0"
+crawl4ai = "^0.6.3"
+markitdown = {extras = ["docx", "pdf", "pptx"], version = "^0.1.2"}
+llama-index-embeddings-google-genai = "^0.1.0"
+llama-index-llms-google-genai = "0.1.7"
+openpyxl = "^3.1.5"
+python-pptx = "^1.0.2"
+transformers = "^4.51.3"
+pillow = "10.4.0"
+pymupdf = "^1.26.0"
+pypatch = "^1.0.2"
+llama-index-readers-database = "^0.4.0"
+psycopg2-binary = "^2.9.10"
+pyodbc = "^5.2.0"
+psutil = "^6.1.1"
+multidict = "6.0.5"
+nest-asyncio = "^1.6.0"
+mem0ai = "^0.1.19"
+litellm = "^1.79.0"
+
+[tool.poetry.dependencies.llama-index-vector-stores-qdrant]
+version = "^0.4.0"
+python = ">=3.11,<3.13"
+
+[tool.poetry.group]
+[tool.poetry.group.dev]
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.8.0"
+pre-commit = "^4.3.0"
+pylint = "^4.0.0"
+pytest = "^8.0.0"
+pytest-asyncio = "^0.23.0"
+pytest-mock = "^3.12.0"
+
+[tool.mypy]
+python_version = "3.11"
+plugins = "pydantic.mypy"
+exclude = [ "tests", "venv", ".venv", "output", "config" ]
+check_untyped_defs = true
+warn_unused_ignores = false
+show_error_codes = true
+namespace_packages = true
+ignore_missing_imports = true
+follow_imports = "silent"
+implicit_optional = true
+strict_optional = false
+disable_error_code = [ "return-value", "assignment" ]
+
+
+[[tool.mypy.overrides]]
+module = "app.*"
+ignore_missing_imports = false
+
+[build-system]
+requires = [ "poetry-core" ]
+build-backend = "poetry.core.masonry.api"

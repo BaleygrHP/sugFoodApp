@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-docstring-first
+      - id: check-ast
+      - id: check-json
+      - id: check-toml
+      - id: mixed-line-ending
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: detect-private-key
+      # - id: no-commit-to-branch  # Disabled for development
+
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: /Users/trantan/.local/bin/poetry run pylint
+        language: system
+        args: [--rcfile=.pylintrc]
+        files: \.py$
+        exclude: ^(tests/|migrations/|__pycache__/)

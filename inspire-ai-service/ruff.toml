@@ -1,0 +1,121 @@
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+# Same as Black.
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.12
+target-version = "py312"
+
+[lint]
+# Enable preview rules
+preview = true
+
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default.
+select = [
+    "E4",       # pycodestyle errors
+    "E7",       # pycodestyle errors
+    "E9",       # pycodestyle errors
+    "F",        # pyflakes
+    "FAST",     # fastapi annotation
+    "I",        # isort
+    "B",        # flake8-bugbear
+    "C4",       # flake8-comprehensions
+    "UP",       # pyupgrade
+    "N",        # pep8-naming
+    "SIM",      # flake8-simplify
+    "TCH",      # flake8-type-checking
+    "RUF",      # ruff-specific rules
+    "TID",      # flake8-tidy-imports
+    "ERA",      # eradicate
+    "PD",       # pandas-vet
+    "PGH",      # pygrep-hooks
+    "PL",       # pylint
+    "TRY",      # tryceratops
+]
+ignore = [
+    "E501",     # line too long
+    "B006",     # Do not use mutable data structures for argument defaults
+    "B008",     # do not perform function calls in argument defaults,
+    "B023",     # Function definition does not bind loop variable
+    "ERA001",   # Found commented-out code,
+    "PLC0415",  # Import alias does not follow naming convention
+    "PLR0913",  # Too many arguments in function definition (6 > 5)
+    "PLR0914",  # Too many local variables
+    "PLR0917",  # Too many positional arguments
+    "PLW2901",  # Redefining name from outer scope
+    "RUF012",   # Mutable class attributes should be annotated with typing.ClassVar
+    "TC003",    # Move any imports in TYPE_CHECKING block to the top level
+    "TID252",   # Relative imports are forbidden
+    "TRY002",   # Create your own exception
+    "TRY003",   # Avoid specifying long messages outside the exception class
+    "TRY300",   # Consider moving this statement to an else block
+    "TRY301",   # Abstract `raise` to an inner function
+    "PLC2701",  # Private name import from external module
+    "PLC1901",  # String comparison can be simplified
+    "F822",     # Undefined name in __all__
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+#
+# This is currently disabled by default, but it is planned for this
+# to be opt-out in the future.
+docstring-code-format = false
+
+# Set the line length limit used when formatting code snippets in
+# docstrings.
+#
+# This only has an effect when the `docstring-code-format` setting is
+# enabled.
+docstring-code-line-length = "dynamic"
