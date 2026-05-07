@@ -63,14 +63,10 @@ export default function RestaurantDetailPage() {
     }
   };
 
-  // Check if user is in group mode (you can implement this based on your app state)
-  const isGroupMode = false; // This could come from context or localStorage
-
   return (
     <RestaurantDetail
       restaurant={restaurant}
       onNavigate={handleNavigate}
-      isGroupMode={isGroupMode}
     />
   );
 }

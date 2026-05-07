@@ -21,6 +21,9 @@ load_dotenv(override=True)
 logger = get_logger(__name__)
 
 
+def get_ai_service_mode():
+    return os.getenv("AI_SERVICE_MODE", "food_chat").strip().lower()
+
 
 def setup_directories():
     os.makedirs(settings.infra.file_storage.data_dir, exist_ok=True)
@@ -30,9 +33,15 @@ def setup_directories():
 async def lifespan(app: FastAPI):
     setup_directories()
     configure_llm()
+    ai_service_mode = get_ai_service_mode()
+    app.state.ai_service_mode = ai_service_mode
 
-    app.state.index_manager = get_index_manager()
-    logger.info(f"Index manager initialized with vector store type: {settings.infra.vector_store.type}")
+    if ai_service_mode == "full":
+        app.state.index_manager = get_index_manager()
+        logger.info(f"Index manager initialized with vector store type: {settings.infra.vector_store.type}")
+    else:
+        app.state.index_manager = None
+        logger.info("AI service started in food_chat mode; skipping knowledge index initialization.")
 
     yield
     logger.info("Shutting down LlamaIndex application...")

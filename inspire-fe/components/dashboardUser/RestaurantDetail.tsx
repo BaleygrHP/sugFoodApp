@@ -2,10 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, MapPin, Clock, DollarSign, Star, Phone, Share2, Heart, Navigation, TrendingUp, Users } from 'lucide-react';
 import { Screen, Restaurant } from '../../app/page';
-import Image from "next/image";
 import RestaurantMap from './RestaurantMap';
-import { createRoom, addRestaurantToRoom, addMenuItemToRoom, fetchRestaurantMenu, fetchRoom } from '@/lib/api';
-import { getParticipantId } from '@/lib/participant';
+import { addMenuItemToShortlist, addRestaurantToShortlist, createRoom, fetchRestaurantMenu, fetchRoom } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { formatPrice, formatPriceRange } from '@/lib/format';
@@ -13,10 +11,9 @@ import { formatPrice, formatPriceRange } from '@/lib/format';
 interface RestaurantDetailProps {
   restaurant: Restaurant;
   onNavigate: (screen: Screen) => void;
-  isGroupMode: boolean;
 }
 
-export default function RestaurantDetail({ restaurant, onNavigate, isGroupMode }: RestaurantDetailProps) {
+export default function RestaurantDetail({ restaurant, onNavigate }: RestaurantDetailProps) {
   const [activeTab, setActiveTab] = useState<'menu' | 'reviews' | 'info'>('menu');
   const [isFavorite, setIsFavorite] = useState(false);
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
@@ -27,18 +24,18 @@ export default function RestaurantDetail({ restaurant, onNavigate, isGroupMode }
   const [roomMenuItems, setRoomMenuItems] = useState<Set<number>>(new Set());
   const router = useRouter();
 
-  // Load current room ID from localStorage and fetch room menu items
+  // Load current room ID from localStorage and fetch shortlisted menu items
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedRoomId = localStorage.getItem('current_room_id');
       if (storedRoomId) {
-        // Verify room still exists and is open, then fetch menu items
         fetchRoom(storedRoomId)
           .then(room => {
             if (room.status === 'open' || room.status === 'ranking' || room.status === 'voting') {
               setCurrentRoomId(storedRoomId);
-              // Get menu item IDs that are already in the room
-              const menuItemIds = new Set(room.menuItems.map(item => item.menuItemId));
+              const menuItemIds = room.status === 'open'
+                ? new Set(room.shortlistItems.map(item => item.menuItemId))
+                : new Set<number>();
               setRoomMenuItems(menuItemIds);
             } else {
               localStorage.removeItem('current_room_id');
@@ -58,13 +55,15 @@ export default function RestaurantDetail({ restaurant, onNavigate, isGroupMode }
     }
   }, []);
 
-  // Refresh room menu items when menu items are loaded or when adding
+  // Refresh shortlisted menu items when the room changes or after adding.
   useEffect(() => {
     if (currentRoomId && menuItems.length > 0) {
       fetchRoom(currentRoomId)
         .then(room => {
           if (room.status === 'open' || room.status === 'ranking' || room.status === 'voting') {
-            const menuItemIds = new Set(room.menuItems.map(item => item.menuItemId));
+            const menuItemIds = room.status === 'open'
+              ? new Set(room.shortlistItems.map(item => item.menuItemId))
+              : new Set<number>();
             setRoomMenuItems(menuItemIds);
           }
         })
@@ -92,117 +91,81 @@ export default function RestaurantDetail({ restaurant, onNavigate, isGroupMode }
     }
   }, [activeTab, restaurant.id, menuItems.length]);
 
-  const handleOrderNow = async () => {
-    if (isGroupMode) {
-      // Add to group order
-      await handleAddToGroupOrder();
-    } else {
-      // Regular order flow (if needed)
-      console.log("Order now for", restaurant.name);
+  const updateShortlistedMenuItems = (room: {
+    id: string;
+    status: 'open' | 'ranking' | 'voting' | 'decided' | 'expired';
+    shortlistItems: Array<{ menuItemId: number }>;
+  }) => {
+    const menuItemIds = room.status === 'open'
+      ? new Set(room.shortlistItems.map((item) => item.menuItemId))
+      : new Set<number>();
+
+    setCurrentRoomId(room.id);
+    setRoomMenuItems(menuItemIds);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('current_room_id', room.id);
     }
   };
 
-  const handleAddToGroupOrder = async () => {
+  const getOrCreateOpenRoom = async () => {
+    const candidateRoomIds = Array.from(
+      new Set(
+        [currentRoomId, typeof window !== 'undefined' ? localStorage.getItem('current_room_id') : null].filter(Boolean),
+      ),
+    ) as string[];
+
+    for (const roomId of candidateRoomIds) {
+      try {
+        const room = await fetchRoom(roomId);
+        if (room.status === 'open') {
+          updateShortlistedMenuItems(room);
+          return room;
+        }
+      } catch {
+        // Ignore stale room ids and create a fresh room below.
+      }
+    }
+
+    const room = await createRoom();
+    updateShortlistedMenuItems(room);
+    return room;
+  };
+
+  const handleAddRestaurantToShortlist = async () => {
     try {
       setAddingToRoom(true);
-      const participantId = getParticipantId();
-
-      // Check if we have a current room, otherwise create one
-      let roomId = currentRoomId;
-
-      if (!roomId) {
-        // Get from localStorage or create new
-        const storedRoomId = typeof window !== 'undefined' ? localStorage.getItem('current_room_id') : null;
-
-        if (storedRoomId) {
-          // Check if room still exists and is open
-          try {
-            const room = await fetchRoom(storedRoomId);
-            if (room.status === 'open' || room.status === 'ranking' || room.status === 'voting') {
-              roomId = storedRoomId;
-            }
-          } catch {
-            // Room doesn't exist, create new
-            roomId = null;
-          }
-        }
-
-        if (!roomId) {
-          // Create new room
-          const room = await createRoom(undefined, participantId);
-          roomId = room.id;
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('current_room_id', roomId);
-          }
-          setCurrentRoomId(roomId);
-        }
-      }
-
-      // Add restaurant to room (adds "Anything" menu item)
-      await addRestaurantToRoom(roomId, restaurant.id);
-
-      // Navigate to voting page
-      router.push(`/voting/${roomId}`);
+      const room = await getOrCreateOpenRoom();
+      const updatedRoom = await addRestaurantToShortlist(room.id, restaurant.id);
+      updateShortlistedMenuItems(updatedRoom);
+      toast.success('Restaurant added to room shortlist!');
+      router.push(`/voting/${updatedRoom.id}`);
     } catch (error) {
-      console.error('Error adding to group order:', error);
-      toast.error('Failed to add to group order. Please try again.');
+      console.error('Error adding restaurant to shortlist:', error);
+      toast.error('Failed to add restaurant to the room shortlist. Please try again.');
     } finally {
       setAddingToRoom(false);
     }
   };
 
-  const handleAddMenuItemToRoom = async (menuItemId: number) => {
+  const handleAddMenuItemToShortlist = async (menuItemId: number) => {
     try {
       setAddingMenuItemId(menuItemId);
-      const participantId = getParticipantId();
-
-      // Check if we have a current room, otherwise create one
-      let roomId = currentRoomId;
-
-      if (!roomId) {
-        // Get from localStorage or create new
-        const storedRoomId = typeof window !== 'undefined' ? localStorage.getItem('current_room_id') : null;
-
-        if (storedRoomId) {
-          // Check if room still exists and is open
-          try {
-            const room = await fetchRoom(storedRoomId);
-            if (room.status === 'open' || room.status === 'ranking' || room.status === 'voting') {
-              roomId = storedRoomId;
-            }
-          } catch {
-            // Room doesn't exist, create new
-            roomId = null;
-          }
-        }
-
-        if (!roomId) {
-          // Create new room
-          const room = await createRoom(undefined, participantId);
-          roomId = room.id;
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('current_room_id', roomId);
-          }
-          setCurrentRoomId(roomId);
-        }
-      }
-
-      // Add specific menu item to room
-      await addMenuItemToRoom(roomId, menuItemId);
-
-      // Update room menu items list
-      setRoomMenuItems(prev => new Set([...prev, menuItemId]));
-
-      // Show success message
-      toast.success('Menu item added to group order!');
+      const room = await getOrCreateOpenRoom();
+      const updatedRoom = await addMenuItemToShortlist(room.id, menuItemId);
+      updateShortlistedMenuItems(updatedRoom);
+      toast.success('Menu item added to room shortlist!');
     } catch (error) {
-      console.error('Error adding menu item to room:', error);
-      toast.error('Failed to add menu item to group order. Please try again.');
+      console.error('Error adding menu item to shortlist:', error);
+      toast.error('Failed to add menu item to the room shortlist. Please try again.');
     } finally {
       setAddingMenuItemId(null);
     }
   };
 
+  const isRestaurantInShortlist = menuItems.some(
+    (item) => item.name === 'Anything' && roomMenuItems.has(item.id),
+  );
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* Header Image */}
@@ -378,7 +341,7 @@ export default function RestaurantDetail({ restaurant, onNavigate, isGroupMode }
                             <p className="font-medium">{item.name}</p>
                             {isInRoom && (
                               <span className="px-2 py-0.5 bg-primary-green/10 text-primary-green text-xs rounded-full">
-                                In Group
+                                In Shortlist
                               </span>
                             )}
                           </div>
@@ -391,7 +354,7 @@ export default function RestaurantDetail({ restaurant, onNavigate, isGroupMode }
                             <p className="text-primary-orange font-medium">{formatPrice(item.price)}</p>
                           )}
                           <button
-                            onClick={() => handleAddMenuItemToRoom(item.id)}
+                            onClick={() => handleAddMenuItemToShortlist(item.id)}
                             disabled={addingMenuItemId === item.id || isInRoom}
                             className={`px-4 py-2 rounded-full text-sm transition-all flex items-center gap-2 ${addingMenuItemId === item.id || isInRoom
                               ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
@@ -406,12 +369,12 @@ export default function RestaurantDetail({ restaurant, onNavigate, isGroupMode }
                             ) : isInRoom ? (
                               <>
                                 <Users className="w-4 h-4" />
-                                <span>Added</span>
+                                <span>In Shortlist</span>
                               </>
                             ) : (
                               <>
                                 <Users className="w-4 h-4" />
-                                <span>Add to Group</span>
+                                <span>Add to Shortlist</span>
                               </>
                             )}
                           </button>
@@ -508,19 +471,24 @@ export default function RestaurantDetail({ restaurant, onNavigate, isGroupMode }
         {/* Bottom CTA */}
         <div className="sticky bottom-0 bg-white border-t border-neutral-200 p-4 rounded-b-2xl shadow-lg mb-6">
           <button
-            onClick={handleAddToGroupOrder}
-            disabled={addingToRoom}
+            onClick={handleAddRestaurantToShortlist}
+            disabled={addingToRoom || isRestaurantInShortlist}
             className="w-full bg-gradient-to-r from-primary-orange to-primary-green text-white py-4 rounded-full hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {addingToRoom ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>Adding to Group Order...</span>
+                <span>Adding to Room Shortlist...</span>
+              </>
+            ) : isRestaurantInShortlist ? (
+              <>
+                <Users className="w-5 h-5" />
+                <span>Already in Room Shortlist</span>
               </>
             ) : (
               <>
                 <Users className="w-5 h-5" />
-                <span>Add to Group Order</span>
+                <span>Add to Room Shortlist</span>
               </>
             )}
           </button>

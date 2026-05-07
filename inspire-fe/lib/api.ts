@@ -68,6 +68,22 @@ export interface RoomMember {
   joinedAt: string;
 }
 
+export interface RoomShortlistItem {
+  menuItemId: number;
+  menuItemName: string;
+  price: number;
+  restaurant: {
+    id: string;
+    name: string;
+    cuisine: string;
+    priceRange: string;
+    image: string;
+    distance: string;
+    rating: number;
+  };
+  votes: number;
+}
+
 export interface RoomDetail {
   id: string;
   hostUserId: string | null;
@@ -90,21 +106,7 @@ export interface RoomDetail {
   members: RoomMember[];
   submissionCount: number;
   latestRecommendationRunId: string | null;
-  menuItems: Array<{
-    menuItemId: number;
-    menuItemName: string;
-    price: number;
-    restaurant: {
-      id: string;
-      name: string;
-      cuisine: string;
-      priceRange: string;
-      image: string;
-      distance: string;
-      rating: number;
-    };
-    votes: number;
-  }>;
+  shortlistItems: RoomShortlistItem[];
 }
 
 export interface RoomPreferenceSubmission {
@@ -216,6 +218,12 @@ export interface LunchReportSummary {
   }>;
 }
 
+export interface ChatSuggestionResponse {
+  reply: string;
+  matchedRestaurantIds: string[];
+  source: "ai" | "fallback";
+}
+
 export interface CreateRoomInput {
   name?: string;
   mealType?: MealType;
@@ -266,7 +274,7 @@ export async function unblockRestaurant(restaurantId: string) {
   });
 }
 
-export async function createRoom(input?: CreateRoomInput | string, _legacyParticipantId?: string) {
+export async function createRoom(input?: CreateRoomInput | string) {
   await ensureGuestSession();
   const payload = typeof input === "string" ? { name: input } : input || {};
   return request<RoomDetail>("/api/v1/rooms", {
@@ -335,6 +343,30 @@ export async function fetchDecision(roomId: string) {
   return request<FinalDecision | null>(`/api/v1/rooms/${roomId}/decision`);
 }
 
+export async function addRestaurantToShortlist(roomId: string, restaurantId: string) {
+  return request<RoomDetail>(`/api/v1/rooms/${roomId}/shortlist/restaurants`, {
+    method: "POST",
+    body: JSON.stringify({ restaurantId }),
+  });
+}
+
+export async function addMenuItemToShortlist(roomId: string, menuItemId: number) {
+  return request<RoomDetail>(`/api/v1/rooms/${roomId}/shortlist/menu-items`, {
+    method: "POST",
+    body: JSON.stringify({ menuItemId }),
+  });
+}
+
+export async function requestAiChatSuggestions(message: string, keywords?: string[]) {
+  return request<ChatSuggestionResponse>("/api/v1/ai/chat-suggestions", {
+    method: "POST",
+    body: JSON.stringify({
+      message,
+      keywords: keywords || [],
+    }),
+  });
+}
+
 export async function listAdminVendors() {
   return request<Vendor[]>("/api/v1/admin/vendors");
 }
@@ -364,48 +396,6 @@ export async function fetchRestaurantMenu(id: string): Promise<(MenuItem & { id:
 
 export async function fetchSpotlightRestaurant(): Promise<Restaurant> {
   return request<Restaurant>("/api/restaurants/spotlight");
-}
-
-// Legacy compatibility helpers.
-export async function addParticipantToRoom(roomId: string, _participantId?: string, _name?: string) {
-  return joinRoom(roomId);
-}
-
-export async function addRestaurantToRoom(_roomId?: string, _restaurantId?: string): Promise<void> {
-  return;
-}
-
-export async function addMenuItemToRoom(_roomId?: string, _menuItemId?: number): Promise<void> {
-  return;
-}
-
-export async function voteForMenuItem(roomId: string, menuItemId: number, _participantId?: string): Promise<{ voteCounts: { [key: number]: number } }> {
-  const summary = await voteForCandidate(roomId, String(menuItemId), 1);
-  return {
-    voteCounts: summary.votes.reduce<{ [key: number]: number }>((acc, vote, index) => {
-      acc[index] = vote.count;
-      return acc;
-    }, {}),
-  };
-}
-
-export async function fetchRoomVotes(roomId: string): Promise<{ voteCounts: { [key: number]: number }; participantVotes: { [key: string]: number[] } }> {
-  const summary = await fetchVoteSummary(roomId);
-  return {
-    voteCounts: summary.votes.reduce<{ [key: number]: number }>((acc, vote, index) => {
-      acc[index] = vote.count;
-      return acc;
-    }, {}),
-    participantVotes: {},
-  };
-}
-
-export async function closeRoom(roomId: string, _participantId?: string): Promise<{ success: boolean; winner: number | null }> {
-  const decision = await closeVote(roomId);
-  return {
-    success: Boolean(decision),
-    winner: decision ? 1 : null,
-  };
 }
 
 export async function uploadImage(file: File): Promise<string> {

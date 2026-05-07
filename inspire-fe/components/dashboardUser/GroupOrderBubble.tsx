@@ -122,8 +122,8 @@ export default function GroupOrderBubble() {
     <button
       onClick={() => router.push(`/voting/${currentRoomId}`)}
       className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-r from-primary-orange to-primary-green text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center z-[9999] hover:scale-110 active:scale-95"
-      title="Go to Group Order"
-      aria-label="Go to Group Order"
+      title="Open Decision Room"
+      aria-label="Open Decision Room"
     >
       <Users className="w-6 h-6" />
     </button>

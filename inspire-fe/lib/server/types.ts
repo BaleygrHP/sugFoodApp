@@ -44,6 +44,22 @@ export interface RoomMember {
   joinedAt: string;
 }
 
+export interface RoomShortlistItem {
+  menuItemId: number;
+  menuItemName: string;
+  price: number;
+  restaurant: {
+    id: string;
+    name: string;
+    cuisine: string;
+    priceRange: string;
+    image: string;
+    distance: string;
+    rating: number;
+  };
+  votes: number;
+}
+
 export interface RoomDetail {
   id: string;
   hostUserId: string | null;
@@ -66,21 +82,7 @@ export interface RoomDetail {
   members: RoomMember[];
   submissionCount: number;
   latestRecommendationRunId: string | null;
-  menuItems: Array<{
-    menuItemId: number;
-    menuItemName: string;
-    price: number;
-    restaurant: {
-      id: string;
-      name: string;
-      cuisine: string;
-      priceRange: string;
-      image: string;
-      distance: string;
-      rating: number;
-    };
-    votes: number;
-  }>;
+  shortlistItems: RoomShortlistItem[];
 }
 
 export interface RoomPreferenceSubmission {
@@ -201,6 +203,10 @@ export interface RankerContext {
     preference: RoomPreferenceSubmission | null;
     participationStatus: ParticipationStatus;
   }>;
+  shortlist: {
+    restaurantIds: string[];
+    dishIds: string[];
+  };
   exploreModeEnabled: boolean;
   requestContext: Record<string, unknown>;
 }

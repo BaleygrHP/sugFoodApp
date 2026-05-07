@@ -9,6 +9,7 @@ import type {
   RoomDetail,
   RoomMember,
   RoomPreferenceSubmission,
+  RoomShortlistItem,
   SessionUser,
   UserProfile,
   Vendor,
@@ -377,6 +378,66 @@ async function getRoomMembers(roomId: string): Promise<RoomMember[]> {
   }));
 }
 
+export async function listRoomShortlistItems(roomId: string): Promise<RoomShortlistItem[]> {
+  const result = await query<{
+    menu_item_id: number;
+    menu_item_name: string;
+    price: string;
+    restaurant_id: string;
+    restaurant_name: string;
+    cuisine: string;
+    price_range: string;
+    image: string | null;
+    distance: string;
+    rating: string;
+    vote_count: string | null;
+  }>(
+    `
+      SELECT
+        mi.id AS menu_item_id,
+        mi.name AS menu_item_name,
+        mi.price,
+        r.id AS restaurant_id,
+        r.name AS restaurant_name,
+        r.cuisine,
+        r.price_range,
+        r.image,
+        r.distance,
+        r.rating,
+        COALESCE(v.vote_count, 0) AS vote_count
+      FROM room_menu_items rmi
+      JOIN menu_items mi ON mi.id = rmi.menu_item_id
+      JOIN restaurants r ON r.id = mi.restaurant_id
+      LEFT JOIN (
+        SELECT menu_item_id, COUNT(*) AS vote_count
+        FROM votes
+        WHERE room_id = $1
+          AND menu_item_id IS NOT NULL
+        GROUP BY menu_item_id
+      ) v ON v.menu_item_id = mi.id
+      WHERE rmi.room_id = $1
+      ORDER BY rmi.added_at ASC, mi.name ASC
+    `,
+    [roomId],
+  );
+
+  return result.rows.map((row) => ({
+    menuItemId: row.menu_item_id,
+    menuItemName: row.menu_item_name,
+    price: numberOrNull(row.price) ?? 0,
+    restaurant: {
+      id: row.restaurant_id,
+      name: row.restaurant_name,
+      cuisine: row.cuisine,
+      priceRange: row.price_range,
+      image: row.image || "",
+      distance: row.distance,
+      rating: numberOrNull(row.rating) ?? 0,
+    },
+    votes: Number.parseInt(row.vote_count || "0", 10),
+  }));
+}
+
 export async function getRoomDetail(roomId: string, inviteBaseUrl?: string): Promise<RoomDetail | null> {
   const roomResult = await query<{
     id: string;
@@ -418,15 +479,18 @@ export async function getRoomDetail(roomId: string, inviteBaseUrl?: string): Pro
   }
 
   const row = roomResult.rows[0];
-  const members = await getRoomMembers(roomId);
-  const submissionCountResult = await query<{ count: string }>(
-    `
-      SELECT COUNT(*) AS count
-      FROM room_preferences
-      WHERE room_id = $1
-    `,
-    [roomId],
-  );
+  const [members, shortlistItems, submissionCountResult] = await Promise.all([
+    getRoomMembers(roomId),
+    listRoomShortlistItems(roomId),
+    query<{ count: string }>(
+      `
+        SELECT COUNT(*) AS count
+        FROM room_preferences
+        WHERE room_id = $1
+      `,
+      [roomId],
+    ),
+  ]);
 
   const inviteToken = await getOrCreateRoomInvite(roomId, safeDate(row.expires_at));
 
@@ -452,7 +516,7 @@ export async function getRoomDetail(roomId: string, inviteBaseUrl?: string): Pro
     members,
     submissionCount: Number.parseInt(submissionCountResult.rows[0]?.count || "0", 10),
     latestRecommendationRunId: row.latest_recommendation_run_id,
-    menuItems: [],
+    shortlistItems,
   };
 }
 
@@ -633,6 +697,75 @@ export async function updateRoomStatus(roomId: string, status: RoomDetail["statu
     `,
     [roomId, status],
   );
+}
+
+export async function addRestaurantToShortlistRecord(roomId: string, restaurantId: string) {
+  const restaurantCheck = await query<{ id: string }>(
+    `
+      SELECT id
+      FROM restaurants
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [restaurantId],
+  );
+
+  if (!restaurantCheck.rows[0]) {
+    return null;
+  }
+
+  const menuItemResult = await query<{ id: number }>(
+    `
+      SELECT id
+      FROM menu_items
+      WHERE restaurant_id = $1 AND name = 'Anything'
+      LIMIT 1
+    `,
+    [restaurantId],
+  );
+
+  const menuItemId = menuItemResult.rows[0]?.id;
+  if (!menuItemId) {
+    return null;
+  }
+
+  await query(
+    `
+      INSERT INTO room_menu_items (room_id, menu_item_id)
+      VALUES ($1, $2)
+      ON CONFLICT (room_id, menu_item_id) DO NOTHING
+    `,
+    [roomId, menuItemId],
+  );
+
+  return menuItemId;
+}
+
+export async function addMenuItemToShortlistRecord(roomId: string, menuItemId: number) {
+  const menuItemCheck = await query<{ id: number }>(
+    `
+      SELECT id
+      FROM menu_items
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [menuItemId],
+  );
+
+  if (!menuItemCheck.rows[0]) {
+    return false;
+  }
+
+  await query(
+    `
+      INSERT INTO room_menu_items (room_id, menu_item_id)
+      VALUES ($1, $2)
+      ON CONFLICT (room_id, menu_item_id) DO NOTHING
+    `,
+    [roomId, menuItemId],
+  );
+
+  return true;
 }
 
 export async function saveRoomPreference(roomId: string, userId: string, preference: RoomPreferenceSubmission, normalizedPayload: Record<string, unknown>) {

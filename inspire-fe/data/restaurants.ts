@@ -1,4 +1,4 @@
-import { Restaurant, MenuItem } from "@/app/page";
+import { Restaurant } from "@/app/page";
 
 // Helper function to format hours
 function formatHours(hours: string): string {
@@ -27,34 +27,6 @@ function generateDescription(name: string, cuisine: string): string {
   return `Nhà hàng ${cuisine} với hương vị đặc trưng. Không gian thoải mái, phục vụ tận tình.`;
 }
 
-// Helper function to get image path from restaurant name
-function getImagePath(name: string): string {
-  const imageMap: { [key: string]: string } = {
-    "Lầu cá Ngon - Tiệm Lẫu 67": "Tiệm Lẩu 67.jpg",
-    "Bún Bò O Xíu": "Bún Bò O Xiu.png",
-    "Buffet Chay - An": "Buffet Chay - An.png",
-    "BÚN ĐẬU AN - CN 2 Nguyễn Minh Hoàng": "BÚN ĐẬU AN - CN 2 Nguyễn Minh Hoàng.png",
-    "Mì Ốc Hến Dì Lan Tân Bình": "Mì Ốc Hến Dì Lan Tân Bình.png",
-    "Hủ Tiếu Thái Lan - Pi Thai": "Hủ Tiếu Thái Lan - Pi Thai.png",
-    "Cơm Thố Trường An": "Cơm Thố Trường An.png",
-    "Thong Dong quán": "Thong Dong Quan.png",
-    "Bún Xì Dầu Tỏi": "Bún Xì Dầu Tỏi.png",
-    "LẠC BUFFET LẨU RAU NẤM CN TÂN BÌNH": "LẠC BUFFET LẨU RAU NẤM CN TÂN BÌNH.png",
-    "Cơm Chảo Nóng Duy Vân | Cơm Văn Phòng Tân Bình": "Cơm Chảo Nóng Duy Vân-Cơm Văn Phòng Tân Bình.png",
-    "Chuỗi Bánh Bèo Chén Bình Định - Tư Phong": "Chuỗi Bánh Bèo Chén Bình Định - Tư Phong.png",
-    "Dung phở gà Hà Nội": "Dung phở gà Hà Nội.png",
-    "Phở bò Đan Phượng": "Phở bò Đan Phượng.png",
-    "Xứ Nghệ Quán": "Xứ Nghệ Quán.png",
-    "Mỳ Quảng Bà Vui": "Mỳ Quảng Bà Vui.png",
-    "Quán Ngon Cơm Bắc": "Quán Ngon Cơm Bắc.png",
-    "Bún Ốc Sườn Cô Sáu - A4 Tân Bình": "Bún Ốc Sườn Cô Sáu - A4 Tân Bình.png",
-    "Bánh Mì Giòn A4": "Bánh Mì Giòn A4.png",
-    "Quán cơm thịt nướng Nhật Bản Megumi": "Quán cơm thịt nướng Nhật Bản Megumi.jpg",
-  };
-
-  const imageFileName = imageMap[name];
-  return imageFileName ? `/images/${imageFileName}` : "";
-}
 
 export const mockRestaurants: Restaurant[] = [
   {
@@ -66,7 +38,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.2 km",
     hours: "17:00-23:00",
     address: "67 Lê Trung Nghĩa, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Việt Nam",
-    image: getImagePath("Lầu cá Ngon - Tiệm Lẫu 67"),
+    image: '/images/tiem-lau-67.jpg',
     pickCount: 15,
     description: generateDescription("Lầu cá Ngon - Tiệm Lẫu 67", "Vietnamese"),
     menuItems: [
@@ -86,7 +58,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.3 km",
     hours: "07:00-17:00",
     address: "06 Đ.C18, Phường 12, Tân Bình, Thành phố Hồ Chí Minh",
-    image: getImagePath("Bún Bò O Xíu"),
+    image: '/images/bun-bo-o-xiu.png',
     pickCount: 28,
     description: generateDescription("Bún Bò O Xíu", "Vietnamese"),
     menuItems: [
@@ -105,7 +77,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.25 km",
     hours: "11:00-20:30",
     address: "57 Lê Trung Nghĩa, Phường 12, Tân Bình, Thành phố Hồ Chí Minh 72111",
-    image: getImagePath("Buffet Chay - An"),
+    image: '/images/buffet-chay-an.png',
     pickCount: 32,
     description: generateDescription("Buffet Chay - An", "Vegetarian"),
     menuItems: [
@@ -125,7 +97,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.3 km",
     hours: "09:00-21:00",
     address: "69-71 Đ. Nguyễn Minh Hoàng, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Việt Nam",
-    image: getImagePath("BÚN ĐẬU AN - CN 2 Nguyễn Minh Hoàng"),
+    image: '/images/bun-dau-an-nguyen-minh-hoang.png',
     pickCount: 52,
     description: generateDescription("BÚN ĐẬU AN - CN 2 Nguyễn Minh Hoàng", "Vietnamese"),
     menuItems: [
@@ -145,7 +117,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.4 km",
     hours: "08:30-20:30",
     address: "60 Phan Bá Phiến, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Mì Ốc Hến Dì Lan Tân Bình"),
+    image: '/images/mi-oc-hen-di-lan-tan-binh.png',
     pickCount: 38,
     description: generateDescription("Mì Ốc Hến Dì Lan Tân Bình", "Vietnamese"),
     menuItems: [
@@ -165,7 +137,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.3 km",
     hours: "08:00-21:00",
     address: "40a Đường A4, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Hủ Tiếu Thái Lan - Pi Thai"),
+    image: '/images/hu-tieu-thai-lan-pi-thai.png',
     pickCount: 41,
     description: generateDescription("Hủ Tiếu Thái Lan - Pi Thai", "Thai"),
     menuItems: [
@@ -185,7 +157,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.35 km",
     hours: "09:00-21:00",
     address: "60 Đường A4, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Cơm Thố Trường An"),
+    image: '/images/com-tho-truong-an.png',
     pickCount: 22,
     description: generateDescription("Cơm Thố Trường An", "Vietnamese"),
     menuItems: [
@@ -205,7 +177,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.4 km",
     hours: "06:30-13:30",
     address: "59 Đường A4, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Thong Dong quán"),
+    image: '/images/thong-dong-quan.png',
     pickCount: 19,
     description: generateDescription("Thong Dong quán", "Vietnamese"),
     menuItems: [
@@ -225,7 +197,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.3 km",
     hours: "07:00-17:00",
     address: "3 Quách Văn Tuấn, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Bún Xì Dầu Tỏi"),
+    image: '/images/bun-xi-dau-toi.png',
     pickCount: 35,
     description: generateDescription("Bún Xì Dầu Tỏi", "Vietnamese"),
     menuItems: [
@@ -245,7 +217,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.25 km",
     hours: "11:00-22:00",
     address: "9 Lê Trung Nghĩa, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("LẠC BUFFET LẨU RAU NẤM CN TÂN BÌNH"),
+    image: '/images/lac-buffet-lau-rau-nam-tan-binh.png',
     pickCount: 48,
     description: generateDescription("LẠC BUFFET LẨU RAU NẤM CN TÂN BÌNH", "Buffet"),
     menuItems: [
@@ -266,7 +238,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.3 km",
     hours: "06:00-21:00",
     address: "18 Lê Trung Nghĩa, Phường 12, Tân Bình, Thành phố Hồ Chí Minh 72510, Vietnam",
-    image: getImagePath("Cơm Chảo Nóng Duy Vân | Cơm Văn Phòng Tân Bình"),
+    image: '/images/com-chao-nong-duy-van-tan-binh.png',
     pickCount: 67,
     description: generateDescription("Cơm Chảo Nóng Duy Vân | Cơm Văn Phòng Tân Bình", "Vietnamese"),
     menuItems: [
@@ -287,7 +259,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.25 km",
     hours: "07:30-21:30",
     address: "7 Lê Trung Nghĩa, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Chuỗi Bánh Bèo Chén Bình Định - Tư Phong"),
+    image: '/images/chuoi-banh-beo-chen-binh-dinh-tu-phong.png',
     pickCount: 59,
     description: generateDescription("Chuỗi Bánh Bèo Chén Bình Định - Tư Phong", "Vietnamese"),
     menuItems: [
@@ -307,7 +279,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.3 km",
     hours: "06:00-13:00",
     address: "3b Đ.C18, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Dung phở gà Hà Nội"),
+    image: '/images/dung-pho-ga-ha-noi.png',
     pickCount: 14,
     description: generateDescription("Dung phở gà Hà Nội", "Vietnamese"),
     menuItems: [
@@ -327,7 +299,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.35 km",
     hours: "06:00-21:00",
     address: "24 Đ.C18, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Phở bò Đan Phượng"),
+    image: '/images/pho-bo-dan-phuong.png',
     pickCount: 46,
     description: generateDescription("Phở bò Đan Phượng", "Vietnamese"),
     menuItems: [
@@ -347,7 +319,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.3 km",
     hours: "06:00-21:00",
     address: "11 Đường A4, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Xứ Nghệ Quán"),
+    image: '/images/xu-nghe-quan.png',
     pickCount: 63,
     description: generateDescription("Xứ Nghệ Quán", "Vietnamese"),
     menuItems: [
@@ -367,7 +339,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.4 km",
     hours: "06:30-21:00",
     address: "34 Đ. Nguyễn Minh Hoàng, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Mỳ Quảng Bà Vui"),
+    image: '/images/my-quang-ba-vui.png',
     pickCount: 37,
     description: generateDescription("Mỳ Quảng Bà Vui", "Vietnamese"),
     menuItems: [
@@ -387,7 +359,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.35 km",
     hours: "11:00-21:00",
     address: "50 Đường A4, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Quán Ngon Cơm Bắc"),
+    image: '/images/quan-ngon-com-bac.png',
     pickCount: 29,
     description: generateDescription("Quán Ngon Cơm Bắc", "Vietnamese"),
     menuItems: [
@@ -407,7 +379,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.4 km",
     hours: "06:30-21:30",
     address: "64 Đường A4, Phường 12, Tân Bình, Thành phố Hồ Chí Minh 70000, Vietnam",
-    image: getImagePath("Bún Ốc Sườn Cô Sáu - A4 Tân Bình"),
+    image: '/images/bun-oc-suon-co-sau-a4-tan-binh.png',
     pickCount: 44,
     description: generateDescription("Bún Ốc Sườn Cô Sáu - A4 Tân Bình", "Vietnamese"),
     menuItems: [
@@ -427,7 +399,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.4 km",
     hours: "06:15-20:00",
     address: "82 Đường A4, Phường 12, Tân Bình, Thành phố Hồ Chí Minh, Vietnam",
-    image: getImagePath("Bánh Mì Giòn A4"),
+    image: '/images/banh-mi-gion-a4.png',
     pickCount: 33,
     description: generateDescription("Bánh Mì Giòn A4", "Vietnamese"),
     menuItems: [
@@ -447,7 +419,7 @@ export const mockRestaurants: Restaurant[] = [
     distance: "0.5 km",
     hours: "10:00-21:30",
     address: "17 Hoàng Kế Viêm, Phường 12, Tân Bình, Thành phố Hồ Chí Minh 72100, Vietnam",
-    image: getImagePath("Quán cơm thịt nướng Nhật Bản Megumi"),
+    image: '/images/quan-com-thit-nuong-nhat-ban-megumi.jpg',
     pickCount: 51,
     description: generateDescription("Quán cơm thịt nướng Nhật Bản Megumi", "Japanese"),
     menuItems: [
@@ -459,4 +431,3 @@ export const mockRestaurants: Restaurant[] = [
     longitude: 106.6503,
   },
 ];
-

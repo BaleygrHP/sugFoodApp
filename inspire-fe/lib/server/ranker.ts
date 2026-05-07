@@ -323,7 +323,10 @@ export function runRecommendationRanker(
       1,
     );
     const vetoPenalty = clamp(memberScores.reduce((sum, entry) => sum + entry.veto, 0) / Math.max(memberScores.length, 1), 0, 1);
-    const groupScore = clamp(0.55 * weightedMean + 0.2 * median - 0.15 * disagreementPenalty - 0.1 * vetoPenalty, 0, 1);
+    const hasHardVeto = memberScores.some((entry) => entry.veto === 1);
+    const groupScore = hasHardVeto
+      ? 0
+      : clamp(0.55 * weightedMean + 0.2 * median - 0.15 * disagreementPenalty - 0.1 * vetoPenalty, 0, 1);
     const feasibilityMultiplier = clamp(
       0.35 +
         0.25 * item.vendorReliabilityScore +
@@ -332,7 +335,14 @@ export function runRecommendationRanker(
       0,
       1.2,
     );
-    const finalScore = clamp(groupScore * feasibilityMultiplier, 0, 1);
+    const shortlistBoost = hasHardVeto
+      ? 0
+      : context.shortlist.dishIds.includes(item.dishId)
+        ? 0.1
+        : context.shortlist.restaurantIds.includes(item.restaurantId)
+          ? 0.06
+          : 0;
+    const finalScore = clamp(groupScore * feasibilityMultiplier + shortlistBoost, 0, 1);
     const participationRate = clamp(context.room.submissionCount / Math.max(context.room.participantCount, 1), 0, 1);
     const consensusStrength = clamp(1 - disagreementPenalty, 0, 1);
     const dataQuality = clamp(context.members.filter((member) => member.preference).length / Math.max(context.members.length, 1), 0, 1);
@@ -356,11 +366,20 @@ export function runRecommendationRanker(
       reasons.push("This helps avoid repeating the latest room choices");
     }
 
+    if (shortlistBoost > 0) {
+      reasons.push("Shortlisted by the room before ranking");
+    }
+
+    if (hasHardVeto) {
+      reasons.push("Rejected by at least one hard room constraint");
+    }
+
     return {
       item,
       weightedMean,
       groupScore,
       feasibilityMultiplier,
+      shortlistBoost,
       finalScore,
       confidence,
       disagreementPenalty,
@@ -384,6 +403,7 @@ export function runRecommendationRanker(
           baseScore: groupScore,
           feasibilityMultiplier,
           disagreementPenalty,
+          shortlistBoost,
           weightedMean,
         },
       } satisfies RecommendationCandidate,

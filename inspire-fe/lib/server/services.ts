@@ -4,6 +4,8 @@ import { query } from "@/lib/db";
 import { appConfig } from "@/lib/server/config";
 import { AppError, assert } from "@/lib/server/errors";
 import {
+  addMenuItemToShortlistRecord,
+  addRestaurantToShortlistRecord,
   addRoomMember,
   createGuestUser,
   createRecommendationRun,
@@ -42,7 +44,7 @@ import type {
   UserProfile,
   Vendor,
 } from "@/lib/server/types";
-import { buildDisplayName, clamp } from "@/lib/server/utils";
+import { buildDisplayName, clamp, normalizeText } from "@/lib/server/utils";
 
 async function trackEvent(eventName: string, payload: { userId?: string | null; roomId?: string | null; data?: Record<string, unknown> }) {
   await query(
@@ -328,7 +330,9 @@ export async function createRoom(user: SessionUser, payload: Partial<{
   });
 
   await trackEvent("room_created", { userId: user.id, roomId });
-  return getRoomDetail(roomId, appConfig.appUrl);
+  const latestRoom = await getRoomDetail(roomId, appConfig.appUrl);
+  assert(latestRoom, "Room not found", 404, "not_found");
+  return latestRoom;
 }
 
 export async function joinRoom(user: SessionUser, roomId: string, inviteToken?: string | null) {
@@ -343,7 +347,9 @@ export async function joinRoom(user: SessionUser, roomId: string, inviteToken?: 
 
   await addRoomMember(roomId, user, room.hostUserId === user.id ? "host" : "member");
   await trackEvent("room_joined", { userId: user.id, roomId });
-  return getRoomDetail(roomId, appConfig.appUrl);
+  const latestRoom = await getRoomDetail(roomId, appConfig.appUrl);
+  assert(latestRoom, "Room not found", 404, "not_found");
+  return latestRoom;
 }
 
 export async function getRoomForViewer(user: SessionUser, roomId: string, inviteToken?: string | null) {
@@ -394,6 +400,27 @@ async function runRoomRecommendation(roomId: string, requestedBy: SessionUser, r
   const members = await getRankerMembers(roomId);
   const catalog = await listRecommendationCatalog();
   const history = await getHistorySnapshot(roomId, members.map((member) => member.user.id));
+  const shortlistRestaurantIds = Array.from(
+    new Set(room.shortlistItems.map((item) => item.restaurant.id)),
+  );
+  const shortlistDishIds = Array.from(
+    new Set(
+      room.shortlistItems.flatMap((item) => {
+        const normalizedShortlistName = normalizeText(item.menuItemName);
+        if (!normalizedShortlistName || normalizedShortlistName === "anything") {
+          return [];
+        }
+
+        return catalog
+          .filter(
+            (catalogItem) =>
+              catalogItem.restaurantId === item.restaurant.id &&
+              catalogItem.normalizedDishName === normalizedShortlistName,
+          )
+          .map((catalogItem) => catalogItem.dishId);
+      }),
+    ),
+  );
   const rankerOutput = runRecommendationRanker(
     {
       room,
@@ -403,6 +430,10 @@ async function runRoomRecommendation(roomId: string, requestedBy: SessionUser, r
         preference: member.preference,
         participationStatus: member.participationStatus,
       })),
+      shortlist: {
+        restaurantIds: shortlistRestaurantIds,
+        dishIds: shortlistDishIds,
+      },
       exploreModeEnabled: appConfig.featureFlags.exploreModeEnabled,
       requestContext,
     },
@@ -426,6 +457,9 @@ async function runRoomRecommendation(roomId: string, requestedBy: SessionUser, r
     configVersion: appConfig.ranking.configVersion,
     requestContext: {
       ...requestContext,
+      shortlistRestaurantIds,
+      shortlistDishIds,
+      shortlistItemsCount: room.shortlistItems.length,
       splitRecommended: rankerOutput.splitRecommended,
     },
     status: "success",
@@ -454,6 +488,43 @@ export async function closeSubmissions(user: SessionUser, roomId: string) {
   return runRoomRecommendation(roomId, user, {
     source: "close_submission",
   });
+}
+
+export async function addRestaurantToShortlist(user: SessionUser, roomId: string, restaurantId: string) {
+  const room = await getRoomForViewer(user, roomId);
+  assert(room.status === "open", "Room is no longer accepting shortlist changes", 400, "room_locked");
+
+  const addedMenuItemId = await addRestaurantToShortlistRecord(roomId, restaurantId);
+  assert(addedMenuItemId, "Restaurant or default shortlist item not found", 404, "not_found");
+
+  await trackEvent("room_shortlist_restaurant_added", {
+    userId: user.id,
+    roomId,
+    data: {
+      restaurantId,
+      menuItemId: addedMenuItemId,
+    },
+  });
+
+  return getRoomDetail(roomId, appConfig.appUrl);
+}
+
+export async function addMenuItemToShortlist(user: SessionUser, roomId: string, menuItemId: number) {
+  const room = await getRoomForViewer(user, roomId);
+  assert(room.status === "open", "Room is no longer accepting shortlist changes", 400, "room_locked");
+
+  const added = await addMenuItemToShortlistRecord(roomId, menuItemId);
+  assert(added, "Menu item not found", 404, "not_found");
+
+  await trackEvent("room_shortlist_menu_item_added", {
+    userId: user.id,
+    roomId,
+    data: {
+      menuItemId,
+    },
+  });
+
+  return getRoomDetail(roomId, appConfig.appUrl);
 }
 
 export async function runRecommendationsManually(user: SessionUser, roomId: string) {

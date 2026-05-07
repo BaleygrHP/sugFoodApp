@@ -11,7 +11,7 @@ class VectorStoreType(StrEnum):
 
 class VectorStoreSettings(BaseModel):
     type: VectorStoreType = Field(default=VectorStoreType.QDRANT)
-    url: str = Field()
-    api_key: str = Field()
+    url: str = Field(default="")
+    api_key: str = Field(default="")
     collection: str = Field(default="jarvis-helpdesk-agentic")
     vector_size: int = Field(default=1536)

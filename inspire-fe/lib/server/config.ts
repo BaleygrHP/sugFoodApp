@@ -1,5 +1,6 @@
 export const appConfig = {
   appUrl: process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000",
+  aiServiceBaseUrl: process.env.AI_SERVICE_BASE_URL || "http://localhost:8000",
   sessionCookieName: "suggest_monan_session",
   sessionSecret: process.env.SESSION_SECRET || "suggest-monan-dev-secret",
   jobSecret: process.env.JOB_SECRET || "suggest-monan-jobs",
@@ -19,4 +20,3 @@ export const appConfig = {
     mmrBeta: 0.8,
   },
 };
-

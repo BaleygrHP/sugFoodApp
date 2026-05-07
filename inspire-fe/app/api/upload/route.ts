@@ -1,7 +1,25 @@
 import { NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { join, parse } from 'path';
 import { existsSync } from 'fs';
+
+function toAsciiSlug(filename: string) {
+  const parsed = parse(filename);
+  const asciiBaseName = parsed.name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+
+  const safeExtension = parsed.ext
+    .replace(/[^a-zA-Z0-9.]/g, '')
+    .toLowerCase();
+
+  return `${asciiBaseName || 'image'}${safeExtension}`;
+}
 
 // POST /api/upload - Upload image file
 export async function POST(request: Request) {
@@ -38,8 +56,7 @@ export async function POST(request: Request) {
 
     // Generate unique filename
     const timestamp = Date.now();
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const filename = `${timestamp}_${sanitizedName}`;
+    const filename = `${timestamp}-${toAsciiSlug(file.name)}`;
 
     // Ensure public/images directory exists
     const publicDir = join(process.cwd(), 'public', 'images');

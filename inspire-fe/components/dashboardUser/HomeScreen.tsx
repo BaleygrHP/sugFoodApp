@@ -23,12 +23,17 @@ import {
   ArrowRight,
   Plus,
 } from "lucide-react";
-import { Screen, Restaurant } from "../../app/page";
-import { redirect } from "next/navigation";
+import { Restaurant } from "../../app/page";
 import { useRouter } from "next/navigation";
 import AllRestaurantsMap from "./AllRestaurantsMap";
-import { fetchRestaurants, fetchSpotlightRestaurant, createRoom, addRestaurantToRoom, fetchRoom } from "@/lib/api";
-import { getParticipantId } from "@/lib/participant";
+import {
+  addRestaurantToShortlist,
+  createRoom,
+  fetchRestaurants,
+  fetchRoom,
+  fetchSpotlightRestaurant,
+  requestAiChatSuggestions,
+} from "@/lib/api";
 import { toast } from 'sonner';
 import AIMessageContent from './AIMessageContent';
 import { formatPriceRange } from '@/lib/format';
@@ -54,7 +59,7 @@ export default function HomeScreen() {
   const [aiLoading, setAiLoading] = useState(false);
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   const [addingToRoom, setAddingToRoom] = useState<string | null>(null);
-  const [restaurantsInRoom, setRestaurantsInRoom] = useState<Set<string>>(new Set());
+  const [restaurantsInShortlist, setRestaurantsInShortlist] = useState<Set<string>>(new Set());
   const [filterCuisine, setFilterCuisine] = useState("all");
   const [vietnameseRegion, setVietnameseRegion] = useState("all");
   const [dishType, setDishType] = useState("all");
@@ -79,52 +84,54 @@ export default function HomeScreen() {
     }
   };
 
-  // Load current room ID from localStorage and fetch restaurants in room
+  // Load current room ID from localStorage and fetch shortlisted restaurants.
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedRoomId = localStorage.getItem('current_room_id');
       if (storedRoomId) {
-        // Verify room still exists and is open, then fetch restaurants
         fetchRoom(storedRoomId)
           .then(room => {
             if (room.status === 'open' || room.status === 'ranking' || room.status === 'voting') {
               setCurrentRoomId(storedRoomId);
-              // Get restaurant IDs that have "Anything" menu item in room
-              const restaurantIds = new Set(
-                room.menuItems
-                  .filter(item => item.menuItemName === 'Anything')
-                  .map(item => item.restaurant.id)
-              );
-              setRestaurantsInRoom(restaurantIds);
+              const restaurantIds = room.status === "open"
+                ? new Set(
+                    room.shortlistItems
+                      .filter(item => item.menuItemName === 'Anything')
+                      .map(item => item.restaurant.id)
+                  )
+                : new Set<string>();
+              setRestaurantsInShortlist(restaurantIds);
             } else {
               localStorage.removeItem('current_room_id');
               setCurrentRoomId(null);
-              setRestaurantsInRoom(new Set());
+              setRestaurantsInShortlist(new Set());
             }
           })
           .catch(() => {
             localStorage.removeItem('current_room_id');
             setCurrentRoomId(null);
-            setRestaurantsInRoom(new Set());
+            setRestaurantsInShortlist(new Set());
           });
       } else {
-        setRestaurantsInRoom(new Set());
+        setRestaurantsInShortlist(new Set());
       }
     }
   }, []);
 
-  // Refresh restaurants in room when currentRoomId changes or after adding
+  // Refresh shortlisted restaurants when the room changes or after adding.
   useEffect(() => {
     if (currentRoomId) {
       fetchRoom(currentRoomId)
         .then(room => {
           if (room.status === 'open' || room.status === 'ranking' || room.status === 'voting') {
-            const restaurantIds = new Set(
-              room.menuItems
-                .filter(item => item.menuItemName === 'Anything')
-                .map(item => item.restaurant.id)
-            );
-            setRestaurantsInRoom(restaurantIds);
+            const restaurantIds = room.status === "open"
+              ? new Set(
+                  room.shortlistItems
+                    .filter(item => item.menuItemName === 'Anything')
+                    .map(item => item.restaurant.id)
+                )
+              : new Set<string>();
+            setRestaurantsInShortlist(restaurantIds);
           }
         })
         .catch(() => {
@@ -165,59 +172,85 @@ export default function HomeScreen() {
     router.push(`/restaurant/${restaurant.id}`);
   };
 
-  const handleAddToGroupOrder = async (e: React.MouseEvent, restaurant: Restaurant) => {
-    e.stopPropagation(); // Prevent card click
+  const updateShortlistedRestaurants = (room: { id: string; shortlistItems: Array<{ menuItemName: string; restaurant: { id: string } }> }) => {
+    const shortlistedRestaurantIds = new Set(
+      room.shortlistItems
+        .filter((item) => item.menuItemName === "Anything")
+        .map((item) => item.restaurant.id),
+    );
+
+    setCurrentRoomId(room.id);
+    setRestaurantsInShortlist(shortlistedRestaurantIds);
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("current_room_id", room.id);
+    }
+  };
+
+  const getOrCreateOpenRoom = async () => {
+    const candidateRoomIds = Array.from(
+      new Set(
+        [currentRoomId, typeof window !== "undefined" ? localStorage.getItem("current_room_id") : null].filter(Boolean),
+      ),
+    ) as string[];
+
+    for (const roomId of candidateRoomIds) {
+      try {
+        const room = await fetchRoom(roomId);
+        if (room.status === "open") {
+          updateShortlistedRestaurants(room);
+          return room;
+        }
+      } catch {
+        // Ignore stale room ids and create a fresh room below.
+      }
+    }
+
+    const room = await createRoom();
+    updateShortlistedRestaurants(room);
+    return room;
+  };
+
+  const handleAddRestaurantToShortlist = async (e: React.MouseEvent, restaurant: Restaurant) => {
+    e.stopPropagation();
 
     try {
       setAddingToRoom(restaurant.id);
-      const participantId = getParticipantId();
+      const room = await getOrCreateOpenRoom();
+      const updatedRoom = await addRestaurantToShortlist(room.id, restaurant.id);
+      updateShortlistedRestaurants(updatedRoom);
 
-      // Check if we have a current room, otherwise create one
-      let roomId = currentRoomId;
-
-      if (!roomId) {
-        // Get from localStorage or create new
-        const storedRoomId = typeof window !== 'undefined' ? localStorage.getItem('current_room_id') : null;
-
-        if (storedRoomId) {
-          // Check if room still exists and is open
-          try {
-            const room = await fetchRoom(storedRoomId);
-            if (room.status === 'open' || room.status === 'ranking' || room.status === 'voting') {
-              roomId = storedRoomId;
-            }
-          } catch {
-            // Room doesn't exist, create new
-            roomId = null;
-          }
-        }
-
-        if (!roomId) {
-          // Create new room
-          const room = await createRoom(undefined, participantId);
-          roomId = room.id;
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('current_room_id', roomId);
-          }
-          setCurrentRoomId(roomId);
-        }
-      }
-
-      // Add restaurant to room
-      await addRestaurantToRoom(roomId, restaurant.id);
-
-      // Update restaurants in room
-      setRestaurantsInRoom(prev => new Set([...prev, restaurant.id]));
-
-      // Show success message
-      toast.success('Room ready. Ask the group for preferences to generate recommendations.');
-      router.push(`/voting/${roomId}`);
+      toast.success("Added to room shortlist. Ask the group for preferences when ready.");
+      router.push(`/voting/${updatedRoom.id}`);
     } catch (error) {
-      console.error('Error adding to group order:', error);
-      toast.error('Failed to add restaurant to group order. Please try again.');
+      console.error("Error adding to room shortlist:", error);
+      toast.error("Failed to add restaurant to the room shortlist. Please try again.");
     } finally {
       setAddingToRoom(null);
     }
+  };
+
+  const applyAiSuggestionResult = (matchedRestaurantIds: string[]) => {
+    const recommendationIds = new Set(matchedRestaurantIds);
+    setAiRecommendations(
+      restaurants.filter((restaurant) => recommendationIds.has(restaurant.id)).slice(0, 5),
+    );
+  };
+
+  const sendAiSuggestionRequest = async (message: string, keywords: string[] = []) => {
+    const suggestion = await requestAiChatSuggestions(message, keywords);
+    applyAiSuggestionResult(suggestion.matchedRestaurantIds);
+    setAiMessages((prev) => [
+      ...prev,
+      {
+        role: "ai",
+        text: suggestion.reply,
+        reason:
+          suggestion.source === "fallback"
+            ? "Using the Vietnamese fallback engine while the AI service is unavailable."
+            : undefined,
+      },
+    ]);
   };
 
   const handleAISubmit = async (e: React.FormEvent) => {
@@ -225,459 +258,51 @@ export default function HomeScreen() {
     if (!aiMessage.trim()) return;
 
     const userMessage = aiMessage.trim();
-    setAiMessages([...aiMessages, { role: "user", text: userMessage }]);
+    setAiMessages((prev) => [...prev, { role: "user", text: userMessage }]);
     setAiMessage("");
     setAiLoading(true);
 
     try {
-      const aiServiceUrl = process.env.NEXT_PUBLIC_AI_SERVICE_URL;
-      if (!aiServiceUrl) {
-        throw new Error('AI Service URL not configured');
-      }
-
-      // Build comprehensive restaurant context for AI
-      const restaurantContext = restaurants.slice(0, 50).map((r, idx) => {
-        return `${idx + 1}. **${r.name}** - ${r.cuisine} cuisine, Rating: ${r.rating}/5.0, Distance: ${r.distance}, Description: ${r.description || 'N/A'}`;
-      }).join('\n');
-
-      // Build comprehensive prompt (similar to suggestion chip when not in chipContextMap)
-      const detailedQuestion = `You are a helpful restaurant recommendation assistant. I have a list of restaurants available in my area. Please suggest 3-5 restaurants that would be perfect for this situation: "${userMessage}"
-
-CONTEXT ABOUT THE SITUATION:
-The user is in a situation described as: ${userMessage}. Please suggest appropriate restaurants based on this context.
-
-AVAILABLE RESTAURANTS:
-${restaurantContext}
-
-INSTRUCTIONS:
-1. Analyze the situation and the available restaurants carefully.
-2. Select 3-5 restaurants that best match the user's needs based on:
-   - Cuisine type appropriateness
-   - Price range suitability
-   - Rating and quality
-   - Distance/convenience
-   - Special features (description, ambiance, etc.)
-3. Format your response in clear, friendly English with:
-   - A brief introduction explaining why these restaurants fit the situation
-   - Use bullet points (*) for each restaurant recommendation
-   - Bold the restaurant names using **restaurant name** format
-   - Include specific details like cuisine, price range, rating, and why it's suitable
-   - Mention key menu items or features if relevant
-   - Keep the tone conversational and helpful
-
-EXAMPLE FORMAT:
-Here are some restaurant suggestions for [situation]:
-
-* **Restaurant Name 1:** Brief description of why it fits. Cuisine: [type], Rating: [X]/5.0, Distance: [X]km. [Specific reason why it's good for this situation].
-
-* **Restaurant Name 2:** [Similar format]
-
-Please provide your recommendations now:`;
-
-      console.log('detailedQuestion', detailedQuestion);
-
-      // Call AI API
-      const response = await fetch(aiServiceUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          question: detailedQuestion,
-          top_k: 5,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch AI recommendations');
-      }
-
-      const data = await response.json();
-
-      // Extract answer from API response
-      const answer = data.answer || '';
-
-      // Try to extract restaurant names/IDs from answer or sources
-      let recommendations: Restaurant[] = [];
-
-      // Search for restaurant names in answer and sources
-      const searchText = answer;
-      const foundRestaurants = restaurants.filter((restaurant) => {
-        const restaurantNameLower = restaurant.name.toLowerCase();
-        const searchTextLower = searchText.toLowerCase();
-        return searchTextLower.includes(restaurantNameLower);
-      });
-
-      // If found restaurants, use them; otherwise use fallback logic
-      if (foundRestaurants.length > 0) {
-        recommendations = foundRestaurants.slice(0, 5);
-      } else {
-        // Use fallback logic based on keywords
-        const lowerMsg = userMessage.toLowerCase();
-        if (lowerMsg.includes("sad") || lowerMsg.includes("down") || lowerMsg.includes("upset")) {
-          recommendations = restaurants.filter(
-            (r) => r.cuisine === "American" || r.cuisine === "Italian"
-          ).slice(0, 5);
-        } else if (lowerMsg.includes("paid") || lowerMsg.includes("celebrate") || lowerMsg.includes("party")) {
-          recommendations = restaurants.filter(
-            (r) => r.priceRange === "$$$" || r.rating >= 4.5
-          ).slice(0, 5);
-        } else if (lowerMsg.includes("stress") || lowerMsg.includes("busy") || lowerMsg.includes("tired")) {
-          recommendations = restaurants.filter(
-            (r) => r.priceRange === "$" || r.distance.includes("0.2")
-          ).slice(0, 5);
-        } else if (lowerMsg.includes("rain") || lowerMsg.includes("cold") || lowerMsg.includes("weather")) {
-          recommendations = restaurants.filter(
-            (r) => r.cuisine === "Asian Fusion"
-          ).slice(0, 5);
-        } else if (lowerMsg.includes("health") || lowerMsg.includes("diet") || lowerMsg.includes("light")) {
-          recommendations = restaurants.filter(
-            (r) => r.cuisine === "Healthy"
-          ).slice(0, 5);
-        } else if (lowerMsg.includes("budget") || lowerMsg.includes("cheap") || lowerMsg.includes("save") || lowerMsg.includes("affordable")) {
-          recommendations = restaurants.filter((r) => r.priceRange === "$").slice(0, 5);
-        } else if (lowerMsg.includes("date") || lowerMsg.includes("romantic") || lowerMsg.includes("special")) {
-          recommendations = restaurants.filter(
-            (r) => r.priceRange === "$$$" || r.cuisine === "Italian"
-          ).slice(0, 5);
-        } else if (lowerMsg.includes("group") || lowerMsg.includes("friends") || lowerMsg.includes("team")) {
-          recommendations = restaurants.filter(
-            (r) => r.cuisine === "Mexican" || r.cuisine === "American"
-          ).slice(0, 5);
-        } else if (lowerMsg.includes("quick") || lowerMsg.includes("fast") || lowerMsg.includes("hurry")) {
-          recommendations = restaurants.filter(
-            (r) => r.distance.includes("0.2") || r.distance.includes("0.3")
-          ).slice(0, 5);
-        } else {
-          recommendations = restaurants.slice(0, 5);
-        }
-      }
-
-      setAiRecommendations(recommendations);
-      setAiMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: answer,
-        },
-      ]);
+      await sendAiSuggestionRequest(userMessage);
     } catch (error) {
-      console.error('Error calling AI service:', error);
-      toast.error('Failed to get AI recommendations. Using fallback suggestions.');
-      // Fallback to original logic if API fails
-      const lowerMsg = userMessage.toLowerCase();
-      let recommendations: Restaurant[] = [];
-      let responseText = "";
-      let contextReason = "";
-
-      if (lowerMsg.includes("sad") || lowerMsg.includes("down") || lowerMsg.includes("upset")) {
-        recommendations = restaurants.filter(
-          (r) => r.cuisine === "American" || r.cuisine === "Italian"
-        );
-        responseText = "🍕 Here's some comfort food to cheer you up!";
-        contextReason =
-          "Comfort foods like burgers and pasta can help lift your spirits.";
-      } else if (lowerMsg.includes("paid") || lowerMsg.includes("celebrate") || lowerMsg.includes("party")) {
-        recommendations = restaurants.filter(
-          (r) => r.priceRange === "$$$" || r.rating >= 4.5
-        );
-        responseText = "🥳 Treat yourself! Here are premium dining options!";
-        contextReason = "You deserve to celebrate with something special!";
-      } else if (lowerMsg.includes("stress") || lowerMsg.includes("busy") || lowerMsg.includes("tired")) {
-        recommendations = restaurants.filter(
-          (r) => r.priceRange === "$" || r.distance.includes("0.2")
-        );
-        responseText = "😌 Let's reduce that stress with easy, nearby options!";
-        contextReason = "Quick, affordable meals so you can relax sooner.";
-      } else if (lowerMsg.includes("rain") || lowerMsg.includes("cold") || lowerMsg.includes("weather")) {
-        recommendations = restaurants.filter(
-          (r) => r.cuisine === "Asian Fusion"
-        );
-        responseText = "🌧️ Warm comfort food perfect for rainy weather!";
-        contextReason =
-          "This spicy noodle soup is perfect for a rainy day like today!";
-      } else if (lowerMsg.includes("health") || lowerMsg.includes("diet") || lowerMsg.includes("light")) {
-        recommendations = restaurants.filter(
-          (r) => r.cuisine === "Healthy"
-        );
-        responseText =
-          "🥗 Fresh and nutritious options for your healthy lifestyle!";
-        contextReason =
-          "Light meals packed with nutrients to keep you energized.";
-      } else if (lowerMsg.includes("budget") || lowerMsg.includes("cheap") || lowerMsg.includes("save") || lowerMsg.includes("affordable")) {
-        recommendations = restaurants.filter((r) => r.priceRange === "$");
-        responseText = "💸 Delicious food without breaking the bank!";
-        contextReason =
-          "End-of-month friendly options that still taste amazing.";
-      } else if (lowerMsg.includes("date") || lowerMsg.includes("romantic") || lowerMsg.includes("special")) {
-        recommendations = restaurants.filter(
-          (r) => r.priceRange === "$$$" || r.cuisine === "Italian"
-        );
-        responseText = "👩‍❤️‍👨 Perfect romantic spots for your date night!";
-        contextReason =
-          "Intimate atmosphere and exceptional cuisine for a special evening.";
-      } else if (lowerMsg.includes("group") || lowerMsg.includes("friends") || lowerMsg.includes("team")) {
-        recommendations = restaurants.filter(
-          (r) => r.cuisine === "Mexican" || r.cuisine === "American"
-        );
-        responseText = "🍻 Ideal places for group gatherings!";
-        contextReason = "Great for sharing food and good times with friends.";
-      } else if (lowerMsg.includes("quick") || lowerMsg.includes("fast") || lowerMsg.includes("hurry")) {
-        recommendations = restaurants.filter(
-          (r) => r.distance.includes("0.2") || r.distance.includes("0.3")
-        );
-        responseText = "⚡ Super quick options nearby!";
-        contextReason =
-          "Fast service and close proximity for your busy schedule.";
-      } else {
-        recommendations = restaurants.slice(0, 5);
-        responseText =
-          "🍽️ Here are some top recommendations based on your preferences!";
-        contextReason = "Popular choices that our users love.";
-      }
-
-      setAiRecommendations(recommendations);
+      console.error("Error loading AI chat suggestions:", error);
+      setAiRecommendations([]);
       setAiMessages((prev) => [
         ...prev,
         {
           role: "ai",
-          text: responseText,
-          reason: contextReason,
+          text: "I could not load suggestions right now. Please try again in a moment.",
         },
       ]);
+      toast.error("Failed to load AI suggestions.");
     } finally {
       setAiLoading(false);
     }
   };
 
   const handleSuggestionChip = async (chipLabel: string, keywords: string) => {
-    setAiMessages([...aiMessages, { role: "user", text: chipLabel }]);
+    setAiMessages((prev) => [...prev, { role: "user", text: chipLabel }]);
     setAiLoading(true);
 
     try {
-      const aiServiceUrl = process.env.NEXT_PUBLIC_AI_SERVICE_URL;
-      if (!aiServiceUrl) {
-        throw new Error('AI Service URL not configured');
-      }
-
-      // Build comprehensive restaurant context for AI
-      const restaurantContext = restaurants.slice(0, 50).map((r, idx) => {
-        return `${idx + 1}. **${r.name}** - ${r.cuisine} cuisine, Rating: ${r.rating}/5.0, Distance: ${r.distance}, Description: ${r.description || 'N/A'}`;
-      }).join('\n');
-
-      // Map chip labels to detailed context
-      const chipContextMap: { [key: string]: string } = {
-        "😔 Feeling Sad": "The user is feeling sad and needs comfort food. Consider restaurants with warm, comforting dishes, high ratings for mood-boosting food, or familiar cuisines that provide emotional comfort.",
-        "🥳 Just got paid": "The user just received their salary and wants to treat themselves. Consider restaurants with higher price ranges ($$$), special occasion vibes, or premium cuisines. Focus on restaurants with excellent ratings and unique experiences.",
-        "🤯 Stressed out": "The user is stressed and needs quick, convenient options. Consider restaurants that are close (short distance), affordable, or offer quick service. Fast-casual or comfort food options work well.",
-        "🌧️ It's raining": "The weather is rainy, so the user likely wants indoor dining, warm food, or cozy atmospheres. Consider restaurants with soups, hot dishes, or cuisines known for warm comfort food.",
-        "🥗 Healthy Options": "The user wants healthy food options. Consider restaurants with 'Healthy' cuisine, vegetarian options, or lighter fare. Focus on restaurants known for nutritious meals.",
-        "💸 On a Budget": "The user is looking for affordable options. Prioritize restaurants with price range '$' (budget-friendly). Consider value-for-money options and restaurants with good ratings despite lower prices.",
-        "👩‍❤️‍👨 Date Night": "The user is planning a romantic date. Consider restaurants with higher price ranges ($$$), romantic atmospheres, Italian or fine dining cuisines, and excellent ratings. Ambiance and quality are key.",
-        "🍻 Group Gathering": "The user is dining with a group. Consider restaurants that accommodate groups well - larger spaces, shareable dishes, casual atmospheres. Mexican, American, or family-style cuisines often work well.",
-        "⚡ Quick Lunch": "The user needs a quick meal, likely during lunch break. Prioritize restaurants that are very close (short distance like 0.2km, 0.3km), offer quick service, and are convenient for lunch.",
-      };
-
-      const situationContext = chipContextMap[chipLabel] || `The user is in a situation described as: ${chipLabel}. Please suggest appropriate restaurants based on this context.`;
-
-      // Build comprehensive prompt
-      const detailedQuestion = `You are a helpful restaurant recommendation assistant. I have a list of restaurants available in my area. Please suggest 3-5 restaurants that would be perfect for this situation: "${chipLabel}"
-
-CONTEXT ABOUT THE SITUATION:
-${situationContext}
-
-AVAILABLE RESTAURANTS:
-${restaurantContext}
-
-INSTRUCTIONS:
-1. Analyze the situation and the available restaurants carefully.
-2. Select 3-5 restaurants that best match the user's needs based on:
-   - Cuisine type appropriateness
-   - Price range suitability
-   - Rating and quality
-   - Distance/convenience
-   - Special features (description, ambiance, etc.)
-3. Format your response in clear, friendly English with:
-   - A brief introduction explaining why these restaurants fit the situation
-   - Use bullet points (*) for each restaurant recommendation
-   - Bold the restaurant names using **restaurant name** format
-   - Include specific details like cuisine, price range, rating, and why it's suitable
-   - Mention key menu items or features if relevant
-   - Keep the tone conversational and helpful
-
-EXAMPLE FORMAT:
-Here are some restaurant suggestions for [situation]:
-
-* **Restaurant Name 1:** Brief description of why it fits. Cuisine: [type], Rating: [X]/5.0, Distance: [X]km. [Specific reason why it's good for this situation].
-
-* **Restaurant Name 2:** [Similar format]
-
-Please provide your recommendations now:`;
-
-      console.log('detailedQuestion', detailedQuestion);
-
-      // Call AI API
-      const response = await fetch(aiServiceUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          question: detailedQuestion,
-          top_k: 5,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch AI recommendations');
-      }
-
-      const data = await response.json();
-
-      // Extract answer from API response
-      const answer = data.answer || '';
-
-
-      // Try to extract restaurant names/IDs from answer or sources
-      let recommendations: Restaurant[] = [];
-
-      // Search for restaurant names in answer and sources
-      const searchText = answer;
-      const foundRestaurants = restaurants.filter((restaurant) => {
-        const restaurantNameLower = restaurant.name.toLowerCase();
-        const searchTextLower = searchText.toLowerCase();
-        return searchTextLower.includes(restaurantNameLower);
-      });
-
-      // If found restaurants, use them; otherwise use fallback logic
-      if (foundRestaurants.length > 0) {
-        recommendations = foundRestaurants.slice(0, 5);
-      } else {
-        // Use fallback logic based on keywords
-        if (keywords.includes("sad")) {
-          recommendations = restaurants.filter(
-            (r) => r.cuisine === "American" || r.cuisine === "Italian"
-          ).slice(0, 5);
-        } else if (keywords.includes("paid")) {
-          recommendations = restaurants.filter(
-            (r) => r.priceRange === "$$$" || r.rating >= 4.5
-          ).slice(0, 5);
-        } else if (keywords.includes("stress")) {
-          recommendations = restaurants.filter(
-            (r) => r.priceRange === "$" || r.distance.includes("0.2")
-          ).slice(0, 5);
-        } else if (keywords.includes("rain")) {
-          recommendations = restaurants.filter(
-            (r) => r.cuisine === "Asian Fusion"
-          ).slice(0, 5);
-        } else if (keywords.includes("health")) {
-          recommendations = restaurants.filter(
-            (r) => r.cuisine === "Healthy"
-          ).slice(0, 5);
-        } else if (keywords.includes("budget")) {
-          recommendations = restaurants.filter((r) => r.priceRange === "$").slice(0, 5);
-        } else if (keywords.includes("date")) {
-          recommendations = restaurants.filter(
-            (r) => r.priceRange === "$$$" || r.cuisine === "Italian"
-          ).slice(0, 5);
-        } else if (keywords.includes("group")) {
-          recommendations = restaurants.filter(
-            (r) => r.cuisine === "Mexican" || r.cuisine === "American"
-          ).slice(0, 5);
-        } else if (keywords.includes("quick")) {
-          recommendations = restaurants.filter(
-            (r) => r.distance.includes("0.2") || r.distance.includes("0.3")
-          ).slice(0, 5);
-        }
-      }
-
-      setAiRecommendations(recommendations);
-      setAiMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: answer,
-        },
-      ]);
+      await sendAiSuggestionRequest(
+        chipLabel,
+        keywords
+          .split(",")
+          .map((keyword) => keyword.trim())
+          .filter(Boolean),
+      );
     } catch (error) {
-      console.error('Error calling AI service:', error);
-      toast.error('Failed to get AI recommendations. Using fallback suggestions.');
-      // Fallback to original logic if API fails
-      const lowerKeywords = keywords.toLowerCase();
-      let recommendations: Restaurant[] = [];
-      let responseText = "";
-      let contextReason = "";
-
-      if (keywords.includes("sad")) {
-        recommendations = restaurants.filter(
-          (r) => r.cuisine === "American" || r.cuisine === "Italian"
-        );
-        responseText = "🍕 Here's some comfort food to cheer you up!";
-        contextReason =
-          "Comfort foods like burgers and pasta can help lift your spirits.";
-      } else if (keywords.includes("paid")) {
-        recommendations = restaurants.filter(
-          (r) => r.priceRange === "$$$" || r.rating >= 4.5
-        );
-        responseText = "🥳 Treat yourself! Here are premium dining options!";
-        contextReason = "You deserve to celebrate with something special!";
-      } else if (keywords.includes("stress")) {
-        recommendations = restaurants.filter(
-          (r) => r.priceRange === "$" || r.distance.includes("0.2")
-        );
-        responseText = "😌 Let's reduce that stress with easy, nearby options!";
-        contextReason = "Quick, affordable meals so you can relax sooner.";
-      } else if (keywords.includes("rain")) {
-        recommendations = restaurants.filter(
-          (r) => r.cuisine === "Asian Fusion"
-        );
-        responseText = "🌧️ Warm comfort food perfect for rainy weather!";
-        contextReason =
-          "This spicy noodle soup is perfect for a rainy day like today!";
-      } else if (keywords.includes("health")) {
-        recommendations = restaurants.filter(
-          (r) => r.cuisine === "Healthy"
-        );
-        responseText =
-          "🥗 Fresh and nutritious options for your healthy lifestyle!";
-        contextReason =
-          "Light meals packed with nutrients to keep you energized.";
-      } else if (keywords.includes("budget")) {
-        recommendations = restaurants.filter((r) => r.priceRange === "$");
-        responseText = "💸 Delicious food without breaking the bank!";
-        contextReason =
-          "End-of-month friendly options that still taste amazing.";
-      } else if (keywords.includes("date")) {
-        recommendations = restaurants.filter(
-          (r) => r.priceRange === "$$$" || r.cuisine === "Italian"
-        );
-        responseText = "👩‍❤️‍👨 Perfect romantic spots for your date night!";
-        contextReason =
-          "Intimate atmosphere and exceptional cuisine for a special evening.";
-      } else if (keywords.includes("group")) {
-        recommendations = restaurants.filter(
-          (r) => r.cuisine === "Mexican" || r.cuisine === "American"
-        );
-        responseText = "🍻 Ideal places for group gatherings!";
-        contextReason = "Great for sharing food and good times with friends.";
-      } else if (keywords.includes("quick")) {
-        recommendations = restaurants.filter(
-          (r) => r.distance.includes("0.2") || r.distance.includes("0.3")
-        );
-        responseText = "⚡ Super quick options nearby!";
-        contextReason =
-          "Fast service and close proximity for your busy schedule.";
-      }
-
-      setAiRecommendations(recommendations);
+      console.error("Error loading AI chip suggestions:", error);
+      setAiRecommendations([]);
       setAiMessages((prev) => [
         ...prev,
         {
           role: "ai",
-          text: responseText,
-          reason: contextReason,
+          text: "I could not load suggestions right now. Please try another prompt.",
         },
       ]);
+      toast.error("Failed to load AI suggestions.");
     } finally {
       setAiLoading(false);
     }
@@ -774,7 +399,7 @@ Please provide your recommendations now:`;
             />
           </div>
 
-          {/* Create Group Order & AI Food Assistant Buttons */}
+          {/* Create room and AI food assistant buttons */}
           <div className="flex items-center gap-3 mb-4">
             {!currentRoomId && (
               <button
@@ -782,7 +407,7 @@ Please provide your recommendations now:`;
                 className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-primary-orange to-primary-green text-white rounded-full hover:shadow-md transition-all font-medium"
               >
                 <Users className="w-5 h-5" />
-                <span>Create Group Order</span>
+                <span>Create Decision Room</span>
               </button>
             )}
             <button
@@ -1480,9 +1105,9 @@ Please provide your recommendations now:`;
                       </div>
                     </div>
                     <button
-                      onClick={(e) => handleAddToGroupOrder(e, restaurant)}
-                      disabled={addingToRoom === restaurant.id || restaurantsInRoom.has(restaurant.id)}
-                      className={`w-full mt-auto py-2 rounded-full transition-all text-sm disabled:cursor-not-allowed ${restaurantsInRoom.has(restaurant.id)
+                      onClick={(e) => handleAddRestaurantToShortlist(e, restaurant)}
+                      disabled={addingToRoom === restaurant.id || restaurantsInShortlist.has(restaurant.id)}
+                      className={`w-full mt-auto py-2 rounded-full transition-all text-sm disabled:cursor-not-allowed ${restaurantsInShortlist.has(restaurant.id)
                         ? 'bg-neutral-100 text-neutral-400'
                         : addingToRoom === restaurant.id
                           ? 'bg-gradient-to-r from-primary-orange to-primary-green text-white opacity-50'
@@ -1491,9 +1116,9 @@ Please provide your recommendations now:`;
                     >
                       {addingToRoom === restaurant.id
                         ? 'Adding...'
-                        : restaurantsInRoom.has(restaurant.id)
-                          ? 'Added'
-                          : 'Add to Group Order'}
+                        : restaurantsInShortlist.has(restaurant.id)
+                          ? 'In Shortlist'
+                          : 'Add to Room Shortlist'}
                     </button>
                   </div>
                 </div>
